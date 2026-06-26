@@ -1,68 +1,43 @@
+// Paste your exact firebase config details here too
 const firebaseConfig = {
-  apiKey: "AIzaSyBgmr-RNHwzrtvlELXi5OQCFco6hds6o2w",
-  authDomain: "ride-book-karo-e83fd.firebaseapp.com",
-  databaseURL: "https://ride-book-karo-e83fd-default-rtdb.firebaseio.com",
-  projectId: "ride-book-karo-e83fd",
-  storageBucket: "ride-book-karo-e83fd.firebasestorage.app",
-  messagingSenderId: "132089297625",
-  appId: "1:132089297625:web:1cc6b4236b6918312c9cc8"
+    apiKey: "AIzaSyAs-YOUR-ACTUAL-API-KEY",
+    authDomain: "ride-book-karo-e83fd.firebaseapp.com",
+    projectId: "ride-book-karo-e83fd",
+    storageBucket: "ride-book-karo-e83fd.appspot.com",
+    messagingSenderId: "YOUR-SENDER-ID",
+    appId: "YOUR-APP-ID"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-var map = L.map('map').setView([28.9350, 79.4050], 14); // Slightly offset for simulation
+var map = L.map('map').setView([28.9324, 79.4012], 14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 var routingControl = null;
 var currentCaptainId = null;
 var targetRideId = null;
-var isKycApproved = false;
+var activeFare = 0;
 
-async function registerCaptainKYC() {
-    const name = document.getElementById("cap-name").value;
-    const vehicle = document.getElementById("cap-vehicle").value;
-    if(!name || !vehicle) return alert("Fill all details!");
-
-    currentCaptainId = "cap_" + Math.floor(1000 + Math.random() * 9000); // Unique ID
-
-    await db.collection("captains").doc(currentCaptainId).set({
-        name: name,
-        vehicleNo: vehicle,
-        kycStatus: "pending", // Admin isko approve karega
-        walletBalance: 50.00,  // Initial 50 Rs deposit
-        currentLocation: new firebase.firestore.GeoPoint(28.9350, 79.4050)
-    });
-
-    document.getElementById("kyc-box").style.display = "none";
-    document.getElementById("work-box").style.display = "block";
-    
-    // Live account listener lagao
-    listenToCaptainAccount(currentCaptainId);
-    startLiveGpsUpdates();
-}
-
-function listenToCaptainAccount(id) {
-    db.collection("captains").doc(id).onSnapshot((doc) => {
-        const data = doc.data();
-        document.getElementById("kyc-status").innerText = data.kycStatus.toUpperCase();
-        document.getElementById("wallet-balance").innerText = data.walletBalance.toFixed(2) + " Rs";
-
-        if(data.kycStatus === "approved") {
-            document.getElementById("kyc-status").style.backgroundColor = "#28a745";
-            document.getElementById("kyc-status").style.color = "white";
-            isKycApproved = true;
-            listenForAvailableRides(); // Ride dhundna shuru karo
-        }
-    });
-}
+// (Baaki ka captain account registration systems pehle wala hi same rahega)
+// Sirf dynamic metrics update handling block ko replace karein:
 
 function listenForAvailableRides() {
-    // Internet listener jo 'pending' rides ko real time me check karega
     db.collection("rides").where("status", "==", "pending").limit(1)
       .onSnapshot((snapshot) => {
-          if(!snapshot.empty && isKycApproved && !targetRideId) {
+          if(!snapshot.empty && !targetRideId) {
               const rideDoc = snapshot.docs[0];
+              const data = rideDoc.data();
               targetRideId = rideDoc.id;
+              activeFare = data.fare; // Pulls dynamically generated fare
+
+              // Render job card info transparently inside driver screen
+              document.getElementById("job-panel").innerHTML = `
+                  <hr>
+                  <p style="color:blue; font-weight:bold;">New Ride Request Received!</p>
+                  <div class="data-row"><span>Total Trip Distance:</span><strong>${data.distance} km</strong></div>
+                  <div class="data-row"><span>Net Cash Collection:</span><strong>${data.fare} Rs</strong></div>
+                  <button id="btn-accept" onclick="acceptIncomingRide()">Accept Ride Request</button>
+              `;
               document.getElementById("job-panel").style.display = "block";
           }
       });
@@ -78,73 +53,72 @@ async function acceptIncomingRide() {
             driverId: currentCaptainId
         });
 
-        document.getElementById("btn-accept").style.display = "none";
-        document.getElementById("otp-section").style.display = "block";
+        // UI alterations
+        document.getElementById("job-panel").innerHTML = `
+            <p>Status: Going to Rider's Pickup Point</p>
+            <div id="otp-section">
+                <input type="text" id="otp-input" placeholder="Enter Rider's 6-Digit OTP">
+                <button onclick="verifyOtpAndStartTrip()">Verify OTP to Begin Trip</button>
+            </div>
+        `;
 
-        // DRAW ROUTE: Driver to Pickup Point
-        if (routingControl) map.removeControl(routingControl);
-        routingControl = L.Routing.control({
-            waypoints: [L.latLng(28.9350, 79.4050), L.latLng(rideData.pickup.lat, rideData.pickup.lng)],
-            addWaypoints: false
-        }).addTo(map);
+        // Telemetry GPS track routing to client location point
+        navigator.geolocation.getCurrentPosition((pos) => {
+            if (routingControl) map.removeControl(routingControl);
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(pos.coords.latitude, pos.coords.longitude),
+                    L.latLng(rideData.pickup.lat, rideData.pickup.lng)
+                ],
+                addWaypoints: false
+            }).addTo(map);
+        });
 
-    } catch (e) { alert("Network issue: " + e.message); }
+    } catch (e) { alert("Network drop error: " + e.message); }
 }
 
 async function verifyOtpAndStartTrip() {
     const enteredOtp = document.getElementById("otp-input").value;
     const rideDoc = await db.collection("rides").doc(targetRideId).get();
+    const rideData = rideDoc.data();
     
-    // Asli cryptographic cross-check from Database token
-    if (enteredOtp === rideDoc.data().otp) {
+    if (enteredOtp === rideData.otp) {
         await db.collection("rides").doc(targetRideId).update({ status: "ongoing" });
-        document.getElementById("otp-section").style.display = "none";
-        document.getElementById("btn-end").style.display = "block";
+        
+        document.getElementById("job-panel").innerHTML = `
+            <p style="color:green; font-weight:bold;">Trip Active: Navigating to Destination</p>
+            <button onclick="endCurrentTrip()" class="btn-danger">End Ride & Collect ${activeFare} Rs</button>
+        `;
 
-        // ROUTE SHIFT: Route changes from Pickup to Drop Location
+        // Clear previous pickup tracking path layer and set target destination tracker
         if (routingControl) map.removeControl(routingControl);
         routingControl = L.Routing.control({
-            waypoints: [L.latLng(rideDoc.data().pickup.lat, rideDoc.data().pickup.lng), L.latLng(rideDoc.data().drop.lat, rideDoc.data().drop.lng)],
+            waypoints: [
+                L.latLng(rideData.pickup.lat, rideData.pickup.lng),
+                L.latLng(rideData.drop.lat, rideData.drop.lng)
+            ],
             addWaypoints: false
         }).addTo(map);
     } else {
-        alert("Galat OTP! Driver App network security match failed.");
+        alert("Security Alert: Invalid Authentication Token!");
     }
 }
 
 async function endCurrentTrip() {
-    const commissionRate = 0.07; // 7% Admin cut
-    const fare = 150;
-    const cutAmount = fare * commissionRate; // 10.50 Rs
+    const commissionRate = 0.07;
+    const cutAmount = activeFare * commissionRate;
 
-    // Deduct directly from Captain's wallet in Database (Allows negative scale)
+    // Direct subtraction engine from current ledger node
     await db.collection("captains").doc(currentCaptainId).update({
         walletBalance: firebase.firestore.FieldValue.increment(-cutAmount)
     });
 
-    // Send cut directly to Admin node
     await db.collection("admin_analytics").doc("revenue").set({
         totalCommissionEarned: firebase.firestore.FieldValue.increment(cutAmount)
     }, { merge: true });
 
     await db.collection("rides").doc(targetRideId).update({ status: "completed" });
     
-    alert(`Trip Completed!\n150 Rs cash collected from rider.\n7% Admin Commission (${cutAmount} Rs) deducted from your wallet.`);
-    if (routingControl) map.removeControl(routingControl);
-    document.getElementById("job-panel").style.display = "none";
-    document.getElementById("btn-end").style.display = "none";
-    document.getElementById("btn-accept").style.display = "block";
-    targetRideId = null;
+    alert(`Success: Collected ${activeFare} Rs. 7% system allocation fee deducted.`);
+    location.reload();
 }
-
-function startLiveGpsUpdates() {
-    navigator.geolocation.watchPosition((position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        if(currentCaptainId) {
-            db.collection("captains").doc(currentCaptainId).update({
-                currentLocation: new firebase.firestore.GeoPoint(lat, lng)
-            });
-        }
-    }, (err) => console.log(err), { enableHighAccuracy: true });
-                                                                                                 }
