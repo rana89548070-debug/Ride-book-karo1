@@ -17,7 +17,7 @@ const DEFAULT_CENTER = [28.6139, 77.2090];
 const ridesRef = collection(db, 'rides');
 
 // ⚠️ APNI FAST2SMS WALI ASLI API KEY YAHAN DIYE GAYE QUOTES KE ANDAR PASTE KAREIN
-const FAST2SMS_API_KEY = 'YOUR_FAST2SMS_API_KEY_HERE'; 
+const FAST2SMS_API_KEY = 'sTNrQI2qae6olFpu34zvmkHBgEXtiAM9L7jd0xC8Ub1fYDPnV51CGh5pD0UcWvzZ9dEY2JawnukT7Fi6'; 
 
 let map;
 let pickupMarker;
