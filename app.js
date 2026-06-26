@@ -16,8 +16,8 @@ const ADMIN_PASSWORD = 'Rohit@2001';
 const DEFAULT_CENTER = [28.6139, 77.2090];
 const ridesRef = collection(db, 'rides');
 
-// ⚠️ APNI FAST2SMS WALI API KEY YAHAN PASTE KAREIN
-const FAST2SMS_API_KEY = 'sTNrQI2qae6olFpu34zvmkHBgEXtiAM9L7jd0xC8Ub1fYDPnV51CGh5pD0UcWvzZ9dEY2JawnukT7Fi6'; 
+// ⚠️ APNI FAST2SMS WALI ASLI API KEY YAHAN DIYE GAYE QUOTES KE ANDAR PASTE KAREIN
+const FAST2SMS_API_KEY = 'YOUR_FAST2SMS_API_KEY_HERE'; 
 
 let map;
 let pickupMarker;
@@ -41,27 +41,43 @@ function showToast(message, type = 'info') {
   setTimeout(() => toast.classList.add('hidden'), 3600);
 }
 
-// ASLI SMS BHEJNE KA FUNCTION
+// REAL SYSTEM SMS GENERATOR WITH BROWSER PROXY BYPASS
 async function sendRealSMSOTP(customerPhone, otpNumber, customerName) {
   if (!FAST2SMS_API_KEY || FAST2SMS_API_KEY.includes('YOUR_')) {
-    console.log("SMS Gateway Key nahi mili, isliye screen par hi OTP chalega.");
+    alert("⚠️ Alert: Apne app.js ke andar Fast2SMS ki asli API Key nahi dali hai! Pehle key dalein.");
     return;
   }
   
-  // Fast2SMS API URL for sending quick OTP
-  const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${FAST2SMS_API_KEY}&route=otp&variables_values=${otpNumber}&numbers=${customerPhone}`;
+  // Clean phone number (remove spaces or +91 if added manually)
+  const cleanPhone = customerPhone.replace(/\D/g, '').slice(-10);
+
+  if (cleanPhone.length !== 10) {
+    alert("❌ Error: Mobile number galat hai! Kripya 10-digit ka sahi number dalein.");
+    return;
+  }
+  
+  // Real Fast2SMS URL for OTP route
+  const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${FAST2SMS_API_KEY}&route=otp&variables_values=${otpNumber}&numbers=${cleanPhone}`;
+  
+  // CORS BYPASS: Routing via a free public proxy server so the browser does not block the real system
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(smsUrl)}`;
 
   try {
-    const response = await fetch(smsUrl, { method: 'GET' });
-    const data = await response.json();
+    showToast("Real system se SMS OTP bhej rahe hain...", "info");
+    const response = await fetch(proxyUrl);
+    const proxyData = await response.json();
+    
+    // Extracting response from proxy container
+    const data = JSON.parse(proxyData.contents);
+    
     if (data.return === true) {
-      showToast(`SMS OTP sent successfully to ${customerPhone}`, 'success');
+      alert(`🎉 REAL SYSTEM SUCCESS!\nOTP (${otpNumber}) ka asli SMS number ${cleanPhone} par bhej diya gaya hai.`);
     } else {
-      console.error("SMS Error Details:", data.message);
-      showToast("SMS nahi gaya! Wallet balance check karein ya direct screen OTP use karein.", "error");
+      alert(`❌ REAL SYSTEM ERROR: ${data.message || 'Wallet balance zero hai ya DND activated hai.'}`);
     }
   } catch (error) {
-    console.error("SMS Gateway Fetch Error:", error);
+    console.error("SMS Gateway Error:", error);
+    alert("❌ Network Error: Proxy server se connect nahi ho paa raha hai ya internet band hai.");
   }
 }
 
@@ -84,7 +100,7 @@ function initMap() {
   map.on('click', handleMapClick);
 }
 
-// REVERSE GEOCODING (Location Name Fetcher)
+// REVERSE GEOCODING (Real Location Names)
 async function getLocationName(lat, lng) {
   try {
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
@@ -161,7 +177,7 @@ function resetMapSelection() {
   map.setView(DEFAULT_CENTER, 12);
 }
 
-// RIDE BOOKING ME REAL SMS INTEGRATION
+// CREATE RIDE & CALL REAL SMS GATEWAY
 async function createRide(e) {
   e.preventDefault();
   if (!pickupCoords || !dropCoords) {
@@ -191,19 +207,17 @@ async function createRide(e) {
   };
 
   try {
-    // 1. Firebase mein ride save hogi
+    // 1. Save data into Cloud Firestore
     await addDoc(ridesRef, rideData);
     
-    // 2. Real Mobile Par SMS Trigger hoga
+    // 2. Fire the real system proxy SMS trigger
     await sendRealSMSOTP(cPhone, generatedOtp, cName);
-    
-    showToast(`Ride Booked! OTP sent via SMS to ${cPhone}`, 'success');
     
     $('latestRideBox').innerHTML = `
       <div class="active-ride-status">
         <p class="status-pill clear">Waiting for Captain...</p>
         <h4>Your Secure OTP: <span style="color:var(--brand); font-size:1.4rem;">${generatedOtp}</span></h4>
-        <p class="muted">Yeh OTP aapke phone number (${cPhone}) par bhi bhej diya gaya hai.</p>
+        <p class="muted">Yeh OTP real-time network se aapke number (${cPhone}) par bhej diya gaya hai.</p>
         <hr style="border:1px solid var(--line); margin: 1rem 0;">
         <p><strong>Route:</strong> ${rideData.pickup} ➔ ${rideData.drop}</p>
         <p><strong>Fare Total:</strong> ${money(rideData.fare)} (${rideData.payment})</p>
@@ -239,7 +253,6 @@ function updateHeroStats() {
   if ($('heroLiveRides')) $('heroLiveRides').textContent = live;
 }
 
-// CAPTAIN PANEL DETAILS
 function renderPendingQueue() {
   const container = $('pendingRequests');
   const pending = rides.filter(r => r.status === 'requested');
@@ -347,6 +360,7 @@ async function endRide() {
   }
 }
 
+// ADMIN PANEL
 function renderAdminDashboard() {
   if (!isAdminLoggedIn) return;
   const tbody = $('ridesTable');
@@ -377,7 +391,7 @@ function renderAdminDashboard() {
 window.globalDeleteRide = async function(id) {
   if (!isAdminLoggedIn) return;
   if(confirm("Delete record?")) {
-    await deleteDoc(doc(doc(db, 'rides', id)));
+    await deleteDoc(doc(db, 'rides', id));
   }
 }
 
@@ -403,3 +417,4 @@ document.addEventListener('DOMContentLoaded', () => {
   $('endRideBtn').addEventListener('click', endRide);
   $('adminLoginForm').addEventListener('submit', handleAdminLogin);
 });
+  
