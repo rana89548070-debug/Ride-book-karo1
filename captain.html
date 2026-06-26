@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain - Earn Money</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>🏍️ Captain Dashboard (Driver)</h2>
+        <div id="map"></div>
+
+        <div class="box captain-box" id="kyc-box">
+            <h3>Captain KYC Verification</h3>
+            <input type="text" id="cap-name" placeholder="Full Name">
+            <input type="text" id="cap-vehicle" placeholder="Vehicle Number (e.g., UK06X1111)">
+            <button onclick="registerCaptainKYC()">Submit KYC Details</button>
+        </div>
+
+        <div class="box captain-box" id="work-box" style="display:none;">
+            <h3>Live Status Panel</h3>
+            <div class="data-row"><span>KYC Status:</span><span id="kyc-status" class="status-badge">Checking...</span></div>
+            <div class="data-row"><span>Wallet Balance:</span><span id="wallet-balance" style="font-weight:bold; color:green;">0.00 Rs</span></div>
+            
+            <div id="job-panel" style="margin-top:20px; display:none;">
+                <hr>
+                <p>New Ride Request Found!</p>
+                <div class="data-row"><span>Fare:</span><span>150 Rs</span></div>
+                <button id="btn-accept" onclick="acceptIncomingRide()">Accept Ride (Route to Pickup)</button>
+                
+                <div id="otp-section" style="display:none; margin-top:10px;">
+                    <input type="text" id="otp-input" placeholder="Enter Rider's 6-Digit OTP">
+                    <button onclick="verifyOtpAndStartTrip()">Verify OTP & Start Trip</button>
+                </div>
+
+                <button id="btn-end" onclick="endCurrentTrip()" class="btn-danger" style="display:none; margin-top:10px;">End Trip (Collect Cash)</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="captain.js"></script>
+</body>
+</html>
