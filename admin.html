@@ -1,18 +1,32 @@
-
----
-
-## 9. `admin.html` :codex-file-citation[codex-file-citation]{line_range_start=1 line_range_end=12 path=admin.html git_url="https://github.com/rana89548070-debug/Ride-book-karo/blob/main/admin.html#L1-L12"}
-
-```html
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ride Book Karo Admin</title>
-  <meta http-equiv="refresh" content="0; url=index.html#admin">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Operations Control</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <p>Admin panel ab main live website par hai. <a href="index.html#admin">Admin Dashboard open karein</a>.</p>
+    <div class="container">
+        <h2>👑 Main System Admin Console</h2>
+        
+        <div class="box admin-box">
+            <h3>Platform Financial Overview</h3>
+            <div class="data-row" style="font-size: 20px; font-weight: bold;">
+                <span>Total 7% Commission Revenue:</span>
+                <span id="admin-revenue" style="color: #dc3545;">0.00 Rs</span>
+            </div>
+        </div>
+
+        <div class="box admin-box">
+            <h3>Pending Captain KYC Approvals</h3>
+            <div id="kyc-requests-list">
+                <p style="color: #6c757d;">No pending KYC requests at the moment.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="admin.js"></script>
 </body>
 </html>
