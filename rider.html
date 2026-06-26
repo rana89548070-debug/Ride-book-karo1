@@ -1,26 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rider - Book Karo</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rider - Book Karo Realtime</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h2>🚖 Rider Panel (Customer)</h2>
+        <h2>🚖 Rider Panel (Live Booking Engine)</h2>
+        <p style="font-size:13px; color:#666;">💡 Tip: Map par click karke Drop location select karein ya pins ko drag karein.</p>
+        
         <div id="map"></div>
         
         <div class="box">
-            <h3>Book a Ride</h3>
+            <h3>Ride Pricing & Metrics</h3>
+            <div class="data-row"><span>Total Distance:</span><span id="ui-distance" style="font-weight:bold; color:#007bff;">0.00 km</span></div>
+            <div class="data-row"><span>Estimated Fare:</span><span id="ui-fare" style="font-weight:bold; color:#28a745;">0.00 Rs</span></div>
             <p>Ride Status: <span class="status-badge" id="ride-status">No Active Booking</span></p>
+            
             <div id="booking-form">
-                <button id="btn-book" onclick="bookNewRide()">Request Ride (Rudrapur Area)</button>
+                <button id="btn-book" onclick="bookNewRide()" disabled>Set Pickup & Drop on Map to Book</button>
             </div>
+            
             <div id="ride-info" style="display:none; margin-top:15px;">
-                <div class="data-row"><span>Active Ride ID:</span><span id="active-ride-id" style="font-weight:bold;">-</span></div>
-                <div class="data-row"><span>Your Secret OTP:</span><span id="display-otp" style="font-weight:bold; color:green; font-size:18px;">-</span></div>
-                <div class="data-row"><span>Driver Assigned:</span><span id="driver-name">Searching...</span></div>
+                <div class="data-row"><span>Active Ride ID:</span><span id="active-ride-id" style="font-weight:bold; color:blue;">-</span></div>
+                <div class="data-row"><span>Your Secret OTP:</span><span id="display-otp" style="font-weight:bold; color:#dc3545; font-size:18px;">-</span></div>
+                <div class="data-row"><span>Driver Assigned:</span><span id="driver-name">Searching for nearby Captain...</span></div>
             </div>
         </div>
     </div>
@@ -31,4 +38,3 @@
     <script src="rider.js"></script>
 </body>
 </html>
-
