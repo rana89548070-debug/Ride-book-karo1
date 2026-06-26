@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ride Book Karo | Live Bike Taxi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a class="logo" href="#home">🏍️ Ride Book Karo</a>
+      <div class="nav-links">
+        <a href="#booking">Rider</a>
+        <a href="#captain">Captain</a>
+        <a href="#admin">Admin</a>
+        <a href="#instructions">Setup</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="hero section">
+      <div class="hero-copy">
+        <p class="eyebrow">Live Firebase connected bike taxi platform</p>
+        <h1>Rapido style rider, captain aur admin panel ek hi professional website me.</h1>
+        <p>Customer ride book karega, captain live request accept karega, OTP verify hoga, admin real-time dashboard se sab rides monitor karega.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#booking">Ride Book Karein</a>
+          <a class="btn secondary" href="#captain">Captain Login</a>
+        </div>
+      </div>
+      <div class="hero-card live-card">
+        <span class="status-dot"></span>
+        <h3>Live System</h3>
+        <p id="connectionStatus">Firebase se connect ho raha hai...</p>
+        <div class="mini-stats">
+          <div><strong id="heroTotalRides">0</strong><span>Rides</span></div>
+          <div><strong id="heroLiveRides">0</strong><span>Live</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="booking" class="section grid-two">
+      <div class="panel rider-panel">
+        <div class="section-title compact">
+          <div>
+            <p class="eyebrow">Rider App</p>
+            <h2>📍 Bike Ride Book Karein</h2>
+          </div>
+          <span class="pill">Live Request</span>
+        </div>
+        <p class="muted">Map par pehla click pickup aur doosra click drop location set karega. Ride Firebase me live save hogi.</p>
+        <div id="map" class="map"></div>
+        <form id="rideForm" class="form">
+          <div class="form-grid">
+            <div class="form-row">
+              <label>Pickup</label>
+              <input id="pickup" name="pickup" placeholder="Map se pickup select karein" readonly required>
+            </div>
+            <div class="form-row">
+              <label>Drop</label>
+              <input id="drop" name="drop" placeholder="Map se drop select karein" readonly required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label>Full Name</label>
+              <input id="name" name="name" placeholder="Apna naam likhein" required>
+            </div>
+            <div class="form-row">
+              <label>Mobile Number</label>
+              <input id="phone" name="phone" pattern="[0-9]{10}" maxlength="10" inputmode="numeric" placeholder="10 digit mobile" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label>Payment Mode</label>
+              <select id="payment" name="payment">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Wallet">Wallet</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Ride Note</label>
+              <input id="note" name="note" placeholder="Landmark ya instruction">
+            </div>
+          </div>
+          <div class="fare-card">
+            <span>Distance: <strong id="distanceText">-- km</strong></span>
+            <span>Fare: <strong id="fareText">₹--</strong></span>
+            <span>OTP: <strong>Auto generate</strong></span>
+          </div>
+          <div class="button-row">
+            <button class="btn primary" type="submit">Request Ride Live</button>
+            <button class="btn ghost" type="button" id="resetMapBtn">Reset Location</button>
+          </div>
+        </form>
+      </div>
+
+      <aside class="panel live-feed">
+        <p class="eyebrow">Rider Tracking</p>
+        <h2>🔎 Latest Ride Status</h2>
+        <div id="latestRideBox" class="empty-state">Abhi koi ride request nahi hai.</div>
+      </aside>
+    </section>
+
+    <section id="captain" class="section grid-two reverse-mobile">
+      <div class="panel">
+        <div class="section-title compact">
+          <div>
+            <p class="eyebrow">Captain App</p>
+            <h2>🧑‍✈️ Captain Live Panel</h2>
+          </div>
+          <span id="captainBadge" class="pill muted-pill">Offline</span>
+        </div>
+        <form id="captainForm" class="form login-card">
+          <div class="form-grid">
+            <div class="form-row">
+              <label>Captain Name</label>
+              <input id="captainName" placeholder="Captain ka naam" required>
+            </div>
+            <div class="form-row">
+              <label>Captain Mobile</label>
+              <input id="captainPhone" pattern="[0-9]{10}" maxlength="10" inputmode="numeric" placeholder="10 digit mobile" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Bike Number</label>
+            <input id="bikeNumber" placeholder="UP 00 AB 1234" required>
+          </div>
+          <button class="btn success full" type="submit">Go Online & Find Rides</button>
+        </form>
+        <div id="captainState" class="captain-state">Captain details bhar kar online aayein.</div>
+        <div id="captainRideCard" class="ride-card hidden">
+          <h3>⚡ New Ride Request</h3>
+          <p><strong>Rider:</strong> <span id="capRider">--</span></p>
+          <p><strong>Pickup:</strong> <span id="capPickup">--</span></p>
+          <p><strong>Drop:</strong> <span id="capDrop">--</span></p>
+          <p><strong>Fare:</strong> <span id="capFare">--</span></p>
+          <button id="acceptRideBtn" class="btn primary full" type="button">Accept Ride</button>
+        </div>
+        <div id="activeRideCard" class="ride-card hidden">
+          <h3>✅ Accepted Ride</h3>
+          <p>Rider OTP: <strong id="captainOtpHint">----</strong></p>
+          <input id="otpInput" inputmode="numeric" placeholder="Rider se OTP lekar enter karein">
+          <button id="startRideBtn" class="btn success full" type="button">Verify OTP & Start Ride</button>
+          <button id="endRideBtn" class="btn danger full hidden" type="button">End Ride & Mark Complete</button>
+        </div>
+      </div>
+
+      <div class="panel request-list-panel">
+        <p class="eyebrow">Live Queue</p>
+        <h2>📡 Pending Requests</h2>
+        <div id="pendingRequests" class="request-list"></div>
+      </div>
+    </section>
+
+    <section id="admin" class="section panel admin-panel">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Owner Admin Panel</p>
+          <h2>📊 Live Admin Dashboard</h2>
+        </div>
+        <span class="pill">Mobile: 7830722258</span>
+      </div>
+
+      <form id="adminLoginForm" class="form admin-login">
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Admin Mobile</label>
+            <input id="adminPhone" inputmode="numeric" maxlength="10" placeholder="7830722258" required>
+          </div>
+          <div class="form-row">
+            <label>Admin Password</label>
+            <input id="adminPassword" type="password" placeholder="Password" required>
+          </div>
+        </div>
+        <button class="btn primary full" type="submit">Admin Login</button>
+        <p class="security-note">Note: Frontend password basic gate hai. Production me Firebase Auth + security rules zaroor lagayein.</p>
+      </form>
+
+      <div id="adminDashboard" class="hidden">
+        <div class="stats">
+          <div><span id="totalRides">0</span><small>Total Rides</small></div>
+          <div><span id="requestedRides">0</span><small>Requested</small></div>
+          <div><span id="completedRides">0</span><small>Completed</small></div>
+          <div><span id="totalRevenue">₹0</span><small>Revenue</small></div>
+          <div><span id="commission">₹0</span><small>10% Commission</small></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Rider</th><th>Captain</th><th>Route</th><th>Fare</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="ridesTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="instructions" class="section panel instructions">
+      <h2>🛠️ Professional Live Website Instructions</h2>
+      <ol>
+        <li><strong>Run:</strong> terminal me <code>python3 -m http.server 8000</code> chalayein aur <code>http://localhost:8000</code> open karein.</li>
+        <li><strong>Firebase:</strong> <code>firebase.js</code> me project config hai. Firestore me <code>rides</code> collection use hoti hai.</li>
+        <li><strong>Rider:</strong> pickup/drop select karke ride request karein. Data live Firestore me save hoga.</li>
+        <li><strong>Captain:</strong> captain details bhar kar online aayein, pending ride accept karein, OTP verify karke start/end karein.</li>
+        <li><strong>Admin:</strong> mobile <code>7830722258</code> aur password use karke live rides, revenue aur commission monitor karein.</li>
+        <li><strong>Production:</strong> public share se pehle Firebase security rules, real OTP SMS gateway, payment gateway, domain, privacy policy aur terms page add karein.</li>
+      </ol>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
