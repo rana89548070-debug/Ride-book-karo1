@@ -24,7 +24,7 @@ var targetRideId = null;
 var activeFare = 0;
 
 // --- 1. KYC SUBMISSION FUNCTION ---
-async function submitKYC() {
+async function SubmitKYC() {
     // HTML se input fields ko unke placeholder ke hisab se dundhna
     const nameInput = document.querySelector('input[placeholder="Full Name"]') || document.getElementById('captain-name');
     const vehicleInput = document.querySelector('input[placeholder*="UK06"]') || document.getElementById('vehicle-number');
