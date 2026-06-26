@@ -1,11 +1,11 @@
-// Paste your exact firebase config details here too
 const firebaseConfig = {
-    apiKey: "AIzaSyAs-YOUR-ACTUAL-API-KEY",
-    authDomain: "ride-book-karo-e83fd.firebaseapp.com",
-    projectId: "ride-book-karo-e83fd",
-    storageBucket: "ride-book-karo-e83fd.appspot.com",
-    messagingSenderId: "YOUR-SENDER-ID",
-    appId: "YOUR-APP-ID"
+  apiKey: "AIzaSyBgmr-RNHwzrtvlELXi5OQCFco6hds6o2w",
+  authDomain: "ride-book-karo-e83fd.firebaseapp.com",
+  databaseURL: "https://ride-book-karo-e83fd-default-rtdb.firebaseio.com",
+  projectId: "ride-book-karo-e83fd",
+  storageBucket: "ride-book-karo-e83fd.firebasestorage.app",
+  messagingSenderId: "132089297625",
+  appId: "1:132089297625:web:1cc6b4236b6918312c9cc8"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
