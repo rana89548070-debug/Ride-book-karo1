@@ -16,6 +16,9 @@ const ADMIN_PASSWORD = 'Rohit@2001';
 const DEFAULT_CENTER = [28.6139, 77.2090];
 const ridesRef = collection(db, 'rides');
 
+// ⚠️ APNI FAST2SMS WALI API KEY YAHAN PASTE KAREIN
+const FAST2SMS_API_KEY = 'sTNrQI2qae6olFpu34zvmkHBgEXtiAM9L7jd0xC8Ub1fYDPnV51CGh5pD0UcWvzZ9dEY2JawnukT7Fi6'; 
+
 let map;
 let pickupMarker;
 let dropMarker;
@@ -38,62 +41,116 @@ function showToast(message, type = 'info') {
   setTimeout(() => toast.classList.add('hidden'), 3600);
 }
 
+// ASLI SMS BHEJNE KA FUNCTION
+async function sendRealSMSOTP(customerPhone, otpNumber, customerName) {
+  if (!FAST2SMS_API_KEY || FAST2SMS_API_KEY.includes('YOUR_')) {
+    console.log("SMS Gateway Key nahi mili, isliye screen par hi OTP chalega.");
+    return;
+  }
+  
+  // Fast2SMS API URL for sending quick OTP
+  const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${FAST2SMS_API_KEY}&route=otp&variables_values=${otpNumber}&numbers=${customerPhone}`;
+
+  try {
+    const response = await fetch(smsUrl, { method: 'GET' });
+    const data = await response.json();
+    if (data.return === true) {
+      showToast(`SMS OTP sent successfully to ${customerPhone}`, 'success');
+    } else {
+      console.error("SMS Error Details:", data.message);
+      showToast("SMS nahi gaya! Wallet balance check karein ya direct screen OTP use karein.", "error");
+    }
+  } catch (error) {
+    console.error("SMS Gateway Fetch Error:", error);
+  }
+}
+
+// SATELLITE VIEW MAP INITIALIZATION
 function initMap() {
-  map = L.map('map').setView(DEFAULT_CENTER, 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri'
+  });
+
+  const streetLabels = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Labels &copy; Esri'
+  });
+
+  map = L.map('map', {
+    center: DEFAULT_CENTER,
+    zoom: 13,
+    layers: [satelliteLayer, streetLabels]
+  });
+
   map.on('click', handleMapClick);
 }
 
-function handleMapClick(event) {
+// REVERSE GEOCODING (Location Name Fetcher)
+async function getLocationName(lat, lng) {
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+    const data = await response.json();
+    if (data && data.display_name) {
+      const parts = data.display_name.split(',');
+      return parts.slice(0, 3).join(',').trim();
+    }
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  } catch (error) {
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  }
+}
+
+async function handleMapClick(e) {
+  const { lat, lng } = e.latlng;
+
   if (!pickupCoords) {
-    pickupCoords = event.latlng;
-    pickupMarker = L.marker(pickupCoords).addTo(map).bindPopup('Pickup').openPopup();
-    $('pickup').value = formatLatLng(pickupCoords);
-    showToast('Pickup set ho gaya. Ab drop location select karein.');
-    return;
+    pickupCoords = [lat, lng];
+    pickupMarker = L.marker(pickupCoords).addTo(map).bindPopup('<b>Pickup Point</b>').openPopup();
+    $('pickup').value = "Fetching address...";
+    const address = await getLocationName(lat, lng);
+    $('pickup').value = address;
+  } else if (!dropCoords) {
+    dropCoords = [lat, lng];
+    dropMarker = L.marker(dropCoords).addTo(map).bindPopup('<b>Drop Point</b>').openPopup();
+    $('drop').value = "Fetching address...";
+    const address = await getLocationName(lat, lng);
+    $('drop').value = address;
+    
+    drawNavigationRoute(pickupCoords, dropCoords);
   }
+}
 
-  if (!dropCoords) {
-    dropCoords = event.latlng;
-    dropMarker = L.marker(dropCoords).addTo(map).bindPopup('Drop').openPopup();
-    $('drop').value = formatLatLng(dropCoords);
-    updateFarePreview();
-    showToast('Drop set ho gaya. Ab ride request bhejein.');
+// LIVE OSRM NAVIGATION ROUTE
+async function drawNavigationRoute(start, end) {
+  if (routeLine) map.removeLayer(routeLine);
+
+  try {
+    const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`);
+    const data = await response.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+      routeLine = L.polyline(coordinates, { color: '#38bdf8', weight: 6, opacity: 0.8 }).addTo(map);
+      map.fitBounds(routeLine.getBounds());
+
+      const distanceInKm = (data.routes[0].distance / 1000).toFixed(2);
+      const calculatedFare = Math.round(30 + (distanceInKm * 10));
+
+      $('distanceText').textContent = `${distanceInKm} km`;
+      $('fareText').textContent = `₹${calculatedFare}`;
+    }
+  } catch (error) {
+    routeLine = L.polyline([start, end], { color: '#ef4444', weight: 4, dashArray: '5, 10' }).addTo(map);
+    $('distanceText').textContent = "Calculated";
+    $('fareText').textContent = "₹50";
   }
-}
-
-function formatLatLng(latlng) {
-  return `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
-}
-
-function getDistanceKm(start, end) {
-  return map.distance(start, end) / 1000;
-}
-
-function estimateFare(distanceKm) {
-  return Math.max(49, Math.round(29 + distanceKm * 14));
-}
-
-function updateFarePreview() {
-  if (!pickupCoords || !dropCoords) return;
-  const distance = getDistanceKm(pickupCoords, dropCoords);
-  const fare = estimateFare(distance);
-  $('distanceText').textContent = `${distance.toFixed(2)} km`;
-  $('fareText').textContent = money(fare);
-
-  if (routeLine) routeLine.remove();
-  routeLine = L.polyline([pickupCoords, dropCoords], { color: '#facc15', weight: 5 }).addTo(map);
-  map.fitBounds(routeLine.getBounds(), { padding: [36, 36] });
 }
 
 function resetMapSelection() {
+  if (pickupMarker) map.removeLayer(pickupMarker);
+  if (dropMarker) map.removeLayer(dropMarker);
+  if (routeLine) map.removeLayer(routeLine);
   pickupCoords = null;
   dropCoords = null;
-  if (pickupMarker) pickupMarker.remove();
-  if (dropMarker) dropMarker.remove();
-  if (routeLine) routeLine.remove();
   pickupMarker = null;
   dropMarker = null;
   routeLine = null;
@@ -104,261 +161,236 @@ function resetMapSelection() {
   map.setView(DEFAULT_CENTER, 12);
 }
 
-async function createRide(event) {
-  event.preventDefault();
+// RIDE BOOKING ME REAL SMS INTEGRATION
+async function createRide(e) {
+  e.preventDefault();
   if (!pickupCoords || !dropCoords) {
-    showToast('Pehle map se pickup aur drop select karein.', 'error');
+    showToast('Map par pickup aur drop points select karein!', 'error');
     return;
   }
 
-  const distance = getDistanceKm(pickupCoords, dropCoords);
-  const fare = estimateFare(distance);
-  const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  const ride = {
-    name: $('name').value.trim(),
-    phone: $('phone').value.trim(),
+  const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+  const cName = $('name').value;
+  const cPhone = $('phone').value.trim();
+
+  const rideData = {
+    name: cName,
+    phone: cPhone,
     pickup: $('pickup').value,
     drop: $('drop').value,
-    pickupCoords: { lat: pickupCoords.lat, lng: pickupCoords.lng },
-    dropCoords: { lat: dropCoords.lat, lng: dropCoords.lng },
-    payment: $('payment').value,
-    note: $('note').value.trim(),
-    distance: Number(distance.toFixed(2)),
-    fare,
-    otp,
+    pickupLat: pickupCoords[0],
+    pickupLng: pickupCoords[1],
+    dropLat: dropCoords[0],
+    dropLng: dropCoords[1],
+    fare: parseInt($('fareText').textContent.replace('₹', '')) || 40,
+    otp: generatedOtp,
     status: 'requested',
-    captain: null,
-    requestedAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    payment: $('payment').value,
+    note: $('note').value || '',
+    createdAt: serverTimestamp()
   };
 
   try {
-    await addDoc(ridesRef, ride);
-    event.target.reset();
-    resetMapSelection();
-    showToast(`Ride live request ho gayi. Rider OTP: ${otp}`, 'success');
-    location.hash = 'captain';
+    // 1. Firebase mein ride save hogi
+    await addDoc(ridesRef, rideData);
+    
+    // 2. Real Mobile Par SMS Trigger hoga
+    await sendRealSMSOTP(cPhone, generatedOtp, cName);
+    
+    showToast(`Ride Booked! OTP sent via SMS to ${cPhone}`, 'success');
+    
+    $('latestRideBox').innerHTML = `
+      <div class="active-ride-status">
+        <p class="status-pill clear">Waiting for Captain...</p>
+        <h4>Your Secure OTP: <span style="color:var(--brand); font-size:1.4rem;">${generatedOtp}</span></h4>
+        <p class="muted">Yeh OTP aapke phone number (${cPhone}) par bhi bhej diya gaya hai.</p>
+        <hr style="border:1px solid var(--line); margin: 1rem 0;">
+        <p><strong>Route:</strong> ${rideData.pickup} ➔ ${rideData.drop}</p>
+        <p><strong>Fare Total:</strong> ${money(rideData.fare)} (${rideData.payment})</p>
+      </div>
+    `;
+    $('rideForm').reset();
   } catch (error) {
-    showToast(`Firebase write failed: ${error.message}`, 'error');
+    showToast('Booking failed: ' + error.message, 'error');
   }
 }
 
 function subscribeToRides() {
-  const ridesQuery = query(ridesRef, orderBy('requestedAt', 'desc'));
-  onSnapshot(ridesQuery, (snapshot) => {
-    rides = snapshot.docs.map((rideDoc) => ({ id: rideDoc.id, ...rideDoc.data() }));
-    $('connectionStatus').textContent = 'Firebase live connected hai.';
-    renderAll();
-  }, (error) => {
-    $('connectionStatus').textContent = 'Firebase connection error.';
-    showToast(`Firebase read failed: ${error.message}`, 'error');
+  const q = query(ridesRef, orderBy('createdAt', 'desc'));
+  onSnapshot(q, (snapshot) => {
+    rides = [];
+    snapshot.forEach(doc => rides.push({ id: doc.id, ...doc.data() }));
+    
+    updateHeroStats();
+    renderPendingQueue();
+    renderAdminDashboard();
+    
+    if (captainProfile && selectedRideId) {
+      const myRide = rides.find(r => r.id === selectedRideId);
+      if (myRide) updateCaptainActivePanel(myRide);
+    }
   });
 }
 
-function renderAll() {
-  renderHeroStats();
-  renderLatestRide();
-  renderPendingRequests();
-  renderCaptainPanel();
-  renderAdminDashboard();
+function updateHeroStats() {
+  const total = rides.length;
+  const live = rides.filter(r => r.status === 'requested' || r.status === 'accepted' || r.status === 'started').length;
+  if ($('heroTotalRides')) $('heroTotalRides').textContent = total;
+  if ($('heroLiveRides')) $('heroLiveRides').textContent = live;
 }
 
-function renderHeroStats() {
-  $('heroTotalRides').textContent = rides.length;
-  $('heroLiveRides').textContent = rides.filter((ride) => ['requested', 'accepted', 'started'].includes(ride.status)).length;
-}
+// CAPTAIN PANEL DETAILS
+function renderPendingQueue() {
+  const container = $('pendingRequests');
+  const pending = rides.filter(r => r.status === 'requested');
 
-function renderLatestRide() {
-  const latest = rides[0];
-  if (!latest) {
-    $('latestRideBox').innerHTML = 'Abhi koi ride request nahi hai.';
+  if (pending.length === 0) {
+    container.innerHTML = '<div class="empty-state">Abhi koi live request nahi hai.</div>';
     return;
   }
-  $('latestRideBox').innerHTML = `
-    <div class="timeline-card">
-      <span class="status-label ${latest.status}">${latest.status}</span>
-      <h3>${latest.name} • ${money(latest.fare)}</h3>
-      <p><strong>Pickup:</strong> ${latest.pickup}</p>
-      <p><strong>Drop:</strong> ${latest.drop}</p>
-      <p><strong>Captain:</strong> ${latest.captain?.name || 'Assign hona baaki'}</p>
-    </div>
-  `;
-}
 
-function renderPendingRequests() {
-  const pending = rides.filter((ride) => ride.status === 'requested');
-  $('pendingRequests').innerHTML = pending.map((ride) => `
-    <article class="queue-card">
-      <div>
-        <span class="status-label requested">requested</span>
-        <h3>${ride.name}</h3>
+  container.innerHTML = pending.map(ride => `
+    <div class="request-item card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <strong>🧑 Customer: ${ride.name}</strong>
+        <span class="pill">${money(ride.fare)}</span>
       </div>
-      <p>${ride.pickup} → ${ride.drop}</p>
-      <strong>${money(ride.fare)}</strong>
-    </article>
-  `).join('') || '<div class="empty-state">Abhi koi pending request nahi hai.</div>';
+      <p style="margin:4px 0;"><span style="color:var(--brand)">📍 From:</span> ${ride.pickup}</p>
+      <p style="margin:4px 0;"><span style="color:var(--info)">🏁 To:</span> ${ride.drop}</p>
+      <p class="muted" style="font-size:0.85rem;">📞 Mobile: ${ride.phone} | Pay: ${ride.payment}</p>
+      ${captainProfile ? `<button class="btn primary full small-btn" style="margin-top:0.8rem;" onclick="globalAcceptRide('${ride.id}')">Accept This Ride</button>` : `<p class="muted">Go online to accept</p>`}
+    </div>
+  `).join('');
 }
 
-function saveCaptain(event) {
-  event.preventDefault();
-  captainProfile = {
-    name: $('captainName').value.trim(),
-    phone: $('captainPhone').value.trim(),
-    bikeNumber: $('bikeNumber').value.trim()
-  };
-  selectedRideId = null;
-  $('captainBadge').textContent = 'Online';
-  $('captainBadge').classList.remove('muted-pill');
-  showToast(`${captainProfile.name} online aa gaye.`, 'success');
-  renderCaptainPanel();
-}
-
-function renderCaptainPanel() {
-  $('captainRideCard').classList.add('hidden');
-  $('activeRideCard').classList.add('hidden');
-
-  if (!captainProfile) {
-    $('captainState').textContent = 'Captain details bhar kar online aayein.';
-    return;
-  }
-
-  const myActiveRide = rides.find((ride) => ride.captain?.phone === captainProfile.phone && ['accepted', 'started'].includes(ride.status));
-  const nextRequest = rides.find((ride) => ride.status === 'requested');
-  const ride = myActiveRide || nextRequest;
-
-  if (!ride) {
-    $('captainState').textContent = 'Aap online hain. New request ka wait ho raha hai...';
-    selectedRideId = null;
-    return;
-  }
-
-  selectedRideId = ride.id;
-  $('captainState').textContent = myActiveRide ? `Aapki ride ${ride.status} status me hai.` : 'New ride request available hai.';
-
-  if (ride.status === 'requested') {
-    $('capRider').textContent = `${ride.name} (${ride.phone})`;
-    $('capPickup').textContent = ride.pickup;
-    $('capDrop').textContent = ride.drop;
-    $('capFare').textContent = money(ride.fare);
-    $('captainRideCard').classList.remove('hidden');
-    return;
-  }
-
-  $('captainOtpHint').textContent = ride.otp;
-  $('activeRideCard').classList.remove('hidden');
-  $('startRideBtn').classList.toggle('hidden', ride.status === 'started');
-  $('endRideBtn').classList.toggle('hidden', ride.status !== 'started');
-}
-
-async function acceptRide() {
-  if (!captainProfile) {
-    showToast('Pehle captain online karein.', 'error');
-    return;
-  }
-  if (!selectedRideId) return;
-
+window.globalAcceptRide = async function(rideId) {
+  if (!captainProfile) return;
+  selectedRideId = rideId;
   try {
-    await updateDoc(doc(db, 'rides', selectedRideId), {
+    await updateDoc(doc(db, 'rides', rideId), {
       status: 'accepted',
-      captain: captainProfile,
-      acceptedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      captain: captainProfile
     });
-    showToast('Ride accept ho gayi. Rider se OTP lein.', 'success');
+    showToast('Ride accepted! View live route on map.', 'success');
+    $('captainRideCard').classList.add('hidden');
+    $('activeRideCard').classList.remove('hidden');
   } catch (error) {
-    showToast(`Ride accept failed: ${error.message}`, 'error');
+    showToast('Action failed: ' + error.message, 'error');
+  }
+};
+
+function saveCaptain(e) {
+  e.preventDefault();
+  captainProfile = {
+    name: $('captainName').value,
+    phone: $('captainPhone').value,
+    bikeNumber: $('bikeNumber').value
+  };
+  $('captainBadge').textContent = "Online";
+  $('captainBadge').className = "pill success-pill";
+  $('captainForm').classList.add('hidden');
+  renderPendingQueue();
+}
+
+function updateCaptainActivePanel(ride) {
+  if (ride.status === 'accepted') {
+    $('activeRideCard').classList.remove('hidden');
+    $('captainOtpHint').textContent = "HIDDEN (Ask Rider)"; 
+    $('startRideBtn').classList.remove('hidden');
+    $('endRideBtn').classList.add('hidden');
+    
+    drawNavigationRoute([ride.pickupLat, ride.pickupLng], [ride.dropLat, ride.dropLng]);
+  } else if (ride.status === 'started') {
+    $('activeRideCard').classList.remove('hidden');
+    $('captainOtpHint').textContent = "VERIFIED ✔";
+    $('startRideBtn').classList.add('hidden');
+    $('endRideBtn').classList.remove('hidden');
+    $('otpInput').classList.add('hidden');
+  } else if (ride.status === 'completed') {
+    $('activeRideCard').innerHTML = `
+      <div style="text-align:center; padding:1rem;">
+        <h3 style="color:var(--success)">🏁 Trip Finished!</h3>
+        <p><strong>Collected Amount:</strong> <span style="font-size:1.5rem; color:var(--brand); font-weight:bold;">${money(ride.fare)}</span></p>
+        <button class="btn secondary full" onclick="window.location.reload()">Next Duty / Refresh</button>
+      </div>
+    `;
+    resetMapSelection();
   }
 }
 
 async function startRide() {
-  const ride = rides.find((item) => item.id === selectedRideId);
-  if (!ride) return;
-  if ($('otpInput').value.trim() !== ride.otp) {
-    showToast('Invalid OTP. Rider se sahi OTP lein.', 'error');
-    return;
-  }
+  if (!selectedRideId) return;
+  const typedOtp = $('otpInput').value.trim();
+  const currentRide = rides.find(r => r.id === selectedRideId);
+  
+  if (!currentRide) return;
 
-  try {
-    await updateDoc(doc(db, 'rides', selectedRideId), {
-      status: 'started',
-      startedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    $('otpInput').value = '';
-    showToast('Ride start ho gayi.', 'success');
-  } catch (error) {
-    showToast(`Ride start failed: ${error.message}`, 'error');
+  if (typedOtp === currentRide.otp) {
+    try {
+      await updateDoc(doc(db, 'rides', selectedRideId), { status: 'started' });
+      showToast('OTP Correct! Trip started.', 'success');
+    } catch (error) {
+      showToast('Error: ' + error.message, 'error');
+    }
+  } else {
+    showToast('Galat OTP! Customer se poochkar sahi dalein.', 'error');
   }
 }
 
 async function endRide() {
   if (!selectedRideId) return;
   try {
-    await updateDoc(doc(db, 'rides', selectedRideId), {
-      status: 'completed',
-      completedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    selectedRideId = null;
-    showToast('Ride complete ho gayi. Payment collect karein.', 'success');
+    await updateDoc(doc(db, 'rides', selectedRideId), { status: 'completed' });
+    showToast('Trip ended successfully!', 'success');
   } catch (error) {
-    showToast(`Ride complete failed: ${error.message}`, 'error');
+    showToast('Error finishing trip: ' + error.message, 'error');
   }
-}
-
-function loginAdmin(event) {
-  event.preventDefault();
-  const phone = $('adminPhone').value.trim();
-  const password = $('adminPassword').value;
-  if (phone !== ADMIN_PHONE || password !== ADMIN_PASSWORD) {
-    showToast('Admin mobile ya password galat hai.', 'error');
-    return;
-  }
-
-  isAdminLoggedIn = true;
-  $('adminLoginForm').classList.add('hidden');
-  $('adminDashboard').classList.remove('hidden');
-  showToast('Admin login successful.', 'success');
-  renderAdminDashboard();
 }
 
 function renderAdminDashboard() {
   if (!isAdminLoggedIn) return;
+  const tbody = $('ridesTable');
+  const completed = rides.filter(r => r.status === 'completed');
+  const requested = rides.filter(r => r.status === 'requested');
+  const revenue = completed.reduce((acc, r) => acc + (r.fare || 0), 0);
+  const comm = Math.round(revenue * 0.10);
 
-  const requested = rides.filter((ride) => ride.status === 'requested');
-  const completed = rides.filter((ride) => ride.status === 'completed');
-  const revenue = completed.reduce((sum, ride) => sum + Number(ride.fare || 0), 0);
   $('totalRides').textContent = rides.length;
   $('requestedRides').textContent = requested.length;
   $('completedRides').textContent = completed.length;
-  $('totalRevenue').textContent = money(revenue);
-  $('commission').textContent = money(Math.round(revenue * 0.1));
-  $('ridesTable').innerHTML = rides.map((ride) => `
+  $('totalRevenue').textContent = `₹${revenue}`;
+  $('commission').textContent = `₹${comm}`;
+
+  tbody.innerHTML = rides.map(ride => `
     <tr>
-      <td>${ride.id.slice(0, 7)}</td>
+      <td>${ride.id.substring(0, 5)}</td>
       <td>${ride.name}<br><small>${ride.phone}</small></td>
-      <td>${ride.captain?.name || '--'}<br><small>${ride.captain?.bikeNumber || ''}</small></td>
-      <td>${ride.pickup}<br>→ ${ride.drop}</td>
-      <td>${money(ride.fare)}<br><small>${ride.payment}</small></td>
+      <td>${ride.captain?.name || '--'}</td>
+      <td>${ride.pickup.substring(0,20)}... ➔ ${ride.drop.substring(0,20)}...</td>
+      <td>${money(ride.fare)}</td>
       <td><span class="status-label ${ride.status}">${ride.status}</span></td>
-      <td><button class="mini-btn" data-delete-id="${ride.id}">Delete</button></td>
+      <td><button class="mini-btn" onclick="globalDeleteRide('${ride.id}')">Delete</button></td>
     </tr>
-  `).join('') || '<tr><td colspan="7">Abhi koi ride nahi hai.</td></tr>';
+  `).join('');
 }
 
-async function deleteRide(rideId) {
+window.globalDeleteRide = async function(id) {
   if (!isAdminLoggedIn) return;
-  try {
-    await deleteDoc(doc(db, 'rides', rideId));
-    showToast('Ride delete ho gayi.', 'success');
-  } catch (error) {
-    showToast(`Delete failed: ${error.message}`, 'error');
+  if(confirm("Delete record?")) {
+    await deleteDoc(doc(doc(db, 'rides', id)));
   }
 }
 
-function handleAdminTableClick(event) {
-  const deleteId = event.target.dataset.deleteId;
-  if (deleteId) deleteRide(deleteId);
+function handleAdminLogin(e) {
+  e.preventDefault();
+  if ($('adminPhone').value === ADMIN_PHONE && $('adminPassword').value === ADMIN_PASSWORD) {
+    isAdminLoggedIn = true;
+    $('adminLoginForm').classList.add('hidden');
+    $('adminDashboard').classList.remove('hidden');
+    renderAdminDashboard();
+  } else {
+    showToast('Invalid Credentials!', 'error');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -367,9 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('rideForm').addEventListener('submit', createRide);
   $('resetMapBtn').addEventListener('click', resetMapSelection);
   $('captainForm').addEventListener('submit', saveCaptain);
-  $('acceptRideBtn').addEventListener('click', acceptRide);
   $('startRideBtn').addEventListener('click', startRide);
   $('endRideBtn').addEventListener('click', endRide);
-  $('adminLoginForm').addEventListener('submit', loginAdmin);
-  $('ridesTable').addEventListener('click', handleAdminTableClick);
+  $('adminLoginForm').addEventListener('submit', handleAdminLogin);
 });
