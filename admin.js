@@ -1,3 +1,4 @@
+// --- ADMIN CORE LOGIC ENGINE ---
 const firebaseConfig = {
   apiKey: "AIzaSyBgmr-RNHwzrtvlELXi5OQCFco6hds6o2w",
   authDomain: "ride-book-karo-e83fd.firebaseapp.com",
@@ -7,46 +8,49 @@ const firebaseConfig = {
   messagingSenderId: "132089297625",
   appId: "1:132089297625:web:1cc6b4236b6918312c9cc8"
 };
+
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// 1. Real-time platform commission earnings monitor
-db.collection("admin_analytics").doc("revenue").onSnapshot((doc) => {
-    if(doc.exists) {
-        document.getElementById("admin-revenue").innerText = doc.data().totalCommissionEarned.toFixed(2) + " Rs";
+// 1. Live Listen Pending Captains
+db.collection("captains").where("status", "==", "pending")
+.onSnapshot((snapshot) => {
+    const listDiv = document.getElementById("kyc-requests-list");
+    if(!listDiv) return;
+
+    if(snapshot.empty) {
+        listDiv.innerHTML = `<p style="color: #6c757d;">No pending KYC requests at the moment.</p>`;
+        return;
     }
+
+    listDiv.innerHTML = ""; 
+    snapshot.forEach((doc) => {
+        const captain = doc.data();
+        const id = doc.id;
+
+        listDiv.innerHTML += `
+            <div class="kyc-card" style="border-left: 5px solid #ffc107; background: #fff; padding: 12px; margin: 10px 0; border-radius: 4px; color:#333; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <p style="margin:4px 0;"><strong>Driver Name:</strong> ${captain.name}</p>
+                <p style="margin:4px 0;"><strong>Vehicle No:</strong> ${captain.vehicle}</p>
+                <button onclick="approveCaptain('${id}')" style="background:#28a745; color:white; border:none; padding:6px 12px; border-radius:3px; font-weight:bold; cursor:pointer; margin-top:5px;">Approve KYC Now</button>
+            </div>
+        `;
+    });
 });
 
-// 2. Real-time watch for captains submitting KYC data
-db.collection("captains").where("kycStatus", "==", "pending")
-  .onSnapshot((snapshot) => {
-      const container = document.getElementById("kyc-requests-list");
-      container.innerHTML = "";
-
-      if(snapshot.empty) {
-          container.innerHTML = `<p style="color: #6c757d;">No pending KYC requests at the moment.</p>`;
-          return;
-      }
-
-      snapshot.forEach((doc) => {
-          const cap = doc.data();
-          const capId = doc.id;
-
-          const row = document.createElement("div");
-          row.className = "box";
-          row.style.borderLeftColor = "#ffc107";
-          row.innerHTML = `
-              <div class="data-row"><span>Name:</span><strong>${cap.name}</strong></div>
-              <div class="data-row"><span>Vehicle:</span><strong>${cap.vehicleNo}</strong></div>
-              <button style="background:#28a745; margin-top:10px;" onclick="approveCaptain('${capId}')">Approve KYC Now</button>
-          `;
-          container.appendChild(row);
-      });
-  });
-
+// 2. Approve Function
 async function approveCaptain(id) {
-    await db.collection("captains").doc(id).update({
-        kycStatus: "approved"
-    });
-    alert("Captain Account Activated on Network Securely!");
+    try {
+        await db.collection("captains").doc(id).update({ status: "approved" });
+        alert("Captain successfully verified!");
+    } catch(e) { alert("Error: " + e.message); }
 }
+
+// 3. Live Revenue Listener
+db.collection("admin_analytics").doc("revenue").onSnapshot((doc) => {
+    const revSpan = document.getElementById("admin-revenue");
+    if(revSpan && doc.exists) {
+        revSpan.innerText = doc.data().totalCommissionEarned.toFixed(2) + " Rs";
+    }
+});
