@@ -12,25 +12,106 @@ const firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth(); // Auth instance initialized
 
 // Initialize Map
 var map = L.map('map').setView([28.9324, 79.4012], 14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+// Global State Variables
 var routingControl = null;
-var currentCaptainId = null;
+var currentCaptainId = null; // Isme ab Firebase User UID standard save hoga
 var targetRideId = null;
 var activeFare = 0;
+var confirmationResult = null; // OTP reference holder
 
-// 🎯 KYC SUBMISSION FUNCTION
-async function SubmitKYC() {
+// --- 📲 PHONE NUMBER LOGIN CONTROLLER ---
+
+// Recaptcha Widget Initializer (Google security check for fake bots)
+window.onload = function() {
+    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+        'size': 'invisible'
+    });
+    
+    // Check if driver is already logged in session
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            currentCaptainId = user.uid;
+            document.getElementById('auth-box').style.display = 'none';
+            checkCaptainDatabaseProfile(user.uid);
+        }
+    });
+};
+
+// 1. Send SMS OTP Function
+function sendLoginOTP() {
+    const phoneInput = document.getElementById('driver-phone').value.trim();
+    if(!phoneInput.startsWith("+")) {
+        alert("Please enter phone number with country code! (e.g., +919548xxxxxx)");
+        return;
+    }
+
+    auth.signInWithPhoneNumber(phoneInput, window.recaptchaVerifier)
+        .then((result) => {
+            confirmationResult = result;
+            alert("✅ Real SMS OTP sent successfully to your device!");
+            document.getElementById('phone-entry-area').style.display = 'none';
+            document.getElementById('otp-entry-area').style.display = 'block';
+        }).catch((error) => {
+            alert("SMS Gateway Error: " + error.message);
+        });
+}
+
+// 2. Verify OTP & Fetch Account Session
+function verifyLoginOTP() {
+    const code = document.getElementById('login-otp-input').value.trim();
+    if(code.length !== 6) {
+        alert("Please enter a valid 6-Digit code.");
+        return;
+    }
+
+    confirmationResult.confirm(code).then((result) => {
+        const user = result.user;
+        currentCaptainId = user.uid;
+        alert("📲 Login Authenticated successfully!");
+        document.getElementById('auth-box').style.display = 'none';
+        
+        // Check if Captain already has KYC or needs to register
+        checkCaptainDatabaseProfile(user.uid);
+    }).catch((error) => {
+        alert("Invalid SMS OTP code! Try again: " + error.message);
+    });
+}
+
+// 3. Database Check Profile Router
+async function checkCaptainDatabaseProfile(uid) {
+    const doc = await db.collection("captains").doc(uid).get();
+    if(doc.exists) {
+        const data = doc.data();
+        document.getElementById('work-box').style.display = 'block';
+        
+        if(data.status === "pending") {
+            document.getElementById('kyc-status').innerText = "⏳ Pending Approval";
+            document.getElementById('kyc-status').style.background = "#ffc107";
+            listenForApproval(uid);
+        } else if(data.status === "approved") {
+            document.getElementById('kyc-status').innerText = "🟢 Approved & Online";
+            document.getElementById('kyc-status').style.background = "#28a745";
+            document.getElementById('wallet-balance').innerText = data.walletBalance.toFixed(2) + " Rs";
+            listenForAvailableRides();
+        }
+    } else {
+        // First-time logged in user -> show KYC registration block
+        document.getElementById('kyc-box').style.display = 'block';
+    }
+}
+
+// --- 📝 4. KYC SUBMISSION FUNCTION (LINKED WITH USER UID) ---
+async function submitKYC() {
     const nameInput = document.getElementById('cap-name');
     const vehicleInput = document.getElementById('cap-vehicle');
     
-    if(!nameInput || !vehicleInput) {
-        alert("🚨 System Error: HTML input IDs (cap-name or cap-vehicle) missing!");
-        return;
-    }
+    if(!nameInput || !vehicleInput) return;
 
     const captainName = nameInput.value.trim();
     const vehicleNumber = vehicleInput.value.trim().toUpperCase(); 
@@ -40,19 +121,15 @@ async function SubmitKYC() {
         return;
     }
 
-    // STRICT VEHICLE FORMAT REGEX
     const vehicleRegex = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/;
     if(!vehicleRegex.test(vehicleNumber)) {
-        alert("🚨 Invalid Vehicle Number! Enter format like UK02TB6475 or UK06AA1111.");
+        alert("🚨 Invalid Vehicle Number Format (e.g., UK02TB6475).");
         return;
     }
 
     try {
-        const btn = document.querySelector('button[onclick*="submitKYC"]') || document.querySelector('button[onclick*="SubmitKYC"]');
-        if(btn) btn.innerText = "Submitting...";
-
-        // Insert into Firestore
-        const captainRef = await db.collection("captains").add({
+        // Is baar document random ID se add nahi hoga, balki driver ki permanent User UID `.doc(currentCaptainId)` standard par set hoga
+        await db.collection("captains").doc(currentCaptainId).set({
             name: captainName,
             vehicle: vehicleNumber,
             status: "pending",
@@ -60,46 +137,34 @@ async function SubmitKYC() {
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        currentCaptainId = captainRef.id;
-        alert("✅ KYC Submitted Successfully! Checking Admin Console...");
-
-        // Safe UI Toggle
-        const kycBox = document.getElementById('kyc-box');
-        const workBox = document.getElementById('work-box');
-        if(kycBox) kycBox.style.display = 'none';
-        if(workBox) {
-            workBox.style.display = 'block';
-            const statusBadge = document.getElementById('kyc-status');
-            if(statusBadge) {
-                statusBadge.innerText = "⏳ Pending Approval";
-                statusBadge.style.background = "#ffc107";
-            }
-        }
+        alert("✅ KYC Submitted Successfully to Admin Panel!");
+        document.getElementById('kyc-box').style.display = 'none';
+        document.getElementById('work-box').style.display = 'block';
+        document.getElementById('kyc-status').innerText = "⏳ Pending Approval";
+        document.getElementById('kyc-status').style.background = "#ffc107";
 
         listenForApproval(currentCaptainId);
 
     } catch (error) {
-        alert("KYC Insertion Error: " + error.message);
+        alert("KYC Submission Error: " + error.message);
     }
 }
 
+// --- 5. ADMIN APPROVAL LISTENER ---
 function listenForApproval(captainId) {
     db.collection("captains").doc(captainId).onSnapshot((doc) => {
         const data = doc.data();
         if (data && data.status === "approved") {
-            alert("🎉 Approved! You are now online.");
-            const statusBadge = document.getElementById('kyc-status');
-            if(statusBadge) {
-                statusBadge.innerText = "🟢 Approved & Online";
-                statusBadge.style.background = "#28a745";
-            }
-            const walletSpan = document.getElementById('wallet-balance');
-            if(walletSpan) walletSpan.innerText = data.walletBalance.toFixed(2) + " Rs";
+            alert("🎉 Badhai ho! Aapka KYC Approve ho gaya hai.");
+            document.getElementById('kyc-status').innerText = "🟢 Approved & Online";
+            document.getElementById('kyc-status').style.background = "#28a745";
+            document.getElementById('wallet-balance').innerText = data.walletBalance.toFixed(2) + " Rs";
             listenForAvailableRides();
         }
     });
 }
 
+// --- 6. LIVE RIDE REQUEST SEARCH ---
 function listenForAvailableRides() {
     db.collection("rides").where("status", "==", "pending").limit(1).onSnapshot((snapshot) => {
         if(!snapshot.empty && !targetRideId) {
@@ -123,6 +188,7 @@ function listenForAvailableRides() {
     });
 }
 
+// --- 7. ACCEPT RIDE FUNCTION ---
 async function acceptIncomingRide() {
     try {
         const rideDoc = await db.collection("rides").doc(targetRideId).get();
@@ -149,6 +215,7 @@ async function acceptIncomingRide() {
     } catch (e) { alert("Error: " + e.message); }
 }
 
+// --- 8. OTP VERIFICATION ENGINE ---
 async function verifyOtpAndStartTrip() {
     const enteredOtp = document.getElementById("otp-input").value.trim();
     const rideDoc = await db.collection("rides").doc(targetRideId).get();
@@ -171,6 +238,7 @@ async function verifyOtpAndStartTrip() {
     } else { alert("Invalid OTP!"); }
 }
 
+// --- 9. END TRIP ENGINE ---
 async function endCurrentTrip() {
     const commissionRate = 0.07;
     const cutAmount = activeFare * commissionRate;
