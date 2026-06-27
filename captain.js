@@ -24,7 +24,7 @@ var targetRideId = null;
 var activeFare = 0;
 
 // --- 1. KYC SUBMISSION FUNCTION (WITH FIXED VALIDATION & UI MATCH) ---
-async function submitKYC() {
+async function SubmitKYC() {
     // Tumhare captain.html ki exact IDs ko target kiya hai
     const nameInput = document.getElementById('cap-name');
     const vehicleInput = document.getElementById('cap-vehicle');
