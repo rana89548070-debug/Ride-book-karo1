@@ -23,55 +23,61 @@ var currentCaptainId = null;
 var targetRideId = null;
 var activeFare = 0;
 
-// --- 1. KYC SUBMISSION FUNCTION ---
-async function SubmitKYC() {
-    // HTML se input fields ko unke placeholder ke hisab se dundhna
-    const nameInput = document.querySelector('input[placeholder="Full Name"]') || document.getElementById('captain-name');
-    const vehicleInput = document.querySelector('input[placeholder*="UK06"]') || document.getElementById('vehicle-number');
+// --- 1. KYC SUBMISSION FUNCTION (WITH FIXED VALIDATION & UI MATCH) ---
+async function submitKYC() {
+    // Tumhare captain.html ki exact IDs ko target kiya hai
+    const nameInput = document.getElementById('cap-name');
+    const vehicleInput = document.getElementById('cap-vehicle');
     
-    if(!nameInput || !vehicleInput || nameInput.value.trim() === "" || vehicleInput.value.trim() === "") {
-        alert("Please enter both Name and Vehicle Number!");
+    if(!nameInput || !vehicleInput) {
+        alert("System Error: HTML elements not found!");
         return;
     }
 
     const captainName = nameInput.value.trim();
-    const vehicleNumber = vehicleInput.value.trim();
+    const vehicleNumber = vehicleInput.value.trim().toUpperCase(); // Auto Capitalize letters
+
+    if(captainName === "") {
+        alert("Please enter your Full Name!");
+        return;
+    }
+
+    // 🎯 STRICT INDIAN VEHICLE REGEX (FIX FOR FAKE VEHICLES)
+    // Yeh format check karega: 2 Letters (State) + 2 Numbers + 1 ya 2 Letters + 4 Numbers (e.g., UK02TB6475)
+    const vehicleRegex = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/;
+    if(!vehicleRegex.test(vehicleNumber)) {
+        alert("🚨 Invalid Vehicle Number! Please enter a valid registration format (e.g., UK02TB6475 or UK06X1111). Random numbers won't work.");
+        return;
+    }
 
     try {
-        // Button par "Submitting..." dikhana taaki baar-baar click na ho
-        const btn = document.querySelector('button[onclick="submitKYC()"]') || document.querySelector('.box button');
-        if(btn) btn.innerText = "Submitting...";
+        const btn = document.querySelector('#kyc-box button');
+        if(btn) btn.innerText = "Submitting to Admin...";
 
-        // Cloud Firestore database me data insert karna
+        // Cloud Firestore me entry push karna
         const captainRef = await db.collection("captains").add({
             name: captainName,
             vehicle: vehicleNumber,
             status: "pending",
-            walletBalance: 500, // Starting free bonus amount
-            currentLocation: new firebase.firestore.GeoPoint(28.9324, 79.4012), // Default location (Rudrapur)
+            walletBalance: 500, // Free welcome bonus
+            currentLocation: new firebase.firestore.GeoPoint(28.9324, 79.4012),
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        // Unique document ID ko global variable me save karna
+        // Document ID ko global variable me lena
         currentCaptainId = captainRef.id;
 
-        // UI par loading panel dikhana aur form ko hide karna
-        document.querySelector('.container').innerHTML += `
-            <div id="job-panel" class="box" style="margin-top: 15px; border-left: 5px solid #ffc107;">
-                <h3 style="color: #333; margin: 0;">Status: ⏳ Waiting for Admin KYC Approval</h3>
-                <p style="font-size: 13px; color: #666;">Admin dashboard se approval milte hi aapko rides milna shuru ho jayengi.</p>
-            </div>
-        `;
-        
-        if(nameInput.closest('.box')) {
-            nameInput.closest('.box').style.display = 'none';
-        }
+        // HTML elements ko hide/show karna bina layout bigade
+        document.getElementById('kyc-box').style.display = 'none';
+        document.getElementById('work-box').style.display = 'block';
+        document.getElementById('kyc-status').innerText = "⏳ Pending Approval";
+        document.getElementById('kyc-status').style.background = "#ffc107";
 
-        // Live track karna ki admin ne kab approve kiya
+        // Admin Approval check karna background engine me
         listenForApproval(currentCaptainId);
 
     } catch (error) {
-        alert("KYC Database Insertion Error: " + error.message);
+        alert("KYC Insertion Error: " + error.message);
     }
 }
 
@@ -82,13 +88,11 @@ function listenForApproval(captainId) {
         if (data && data.status === "approved") {
             alert("🎉 Badhai ho! Aapka KYC Approve ho gaya hai. Ab rides milna start ho jayengi.");
             
-            const jobPanel = document.getElementById("job-panel");
-            if(jobPanel) {
-                jobPanel.style.borderLeft = "5px solid #28a745";
-                jobPanel.innerHTML = `<h3 style="color: #28a745; margin:0;">🟢 Online: Searching for Rides...</h3>`;
-            }
+            document.getElementById('kyc-status').innerText = "🟢 Approved & Online";
+            document.getElementById('kyc-status').style.background = "#28a745";
+            document.getElementById('wallet-balance').innerText = data.walletBalance.toFixed(2) + " Rs";
             
-            // Background engine start karna rides search karne ke liye
+            // Ride request portal open karna dashboard par
             listenForAvailableRides();
         }
     });
@@ -102,17 +106,18 @@ function listenForAvailableRides() {
               const rideDoc = snapshot.docs[0];
               const data = rideDoc.data();
               targetRideId = rideDoc.id;
-              activeFare = data.fare; // Dynamic fare values from cloud
+              activeFare = data.fare;
 
-              // Driver screen par ride request ka card generate karna
-              document.getElementById("job-panel").innerHTML = `
-                  <hr>
-                  <p style="color:blue; font-weight:bold; margin:5px 0;">New Ride Request Received!</p>
-                  <div style="margin: 8px 0;">Trip Distance: <strong>${data.distance} km</strong></div>
-                  <div style="margin: 8px 0;">Net Cash Collection: <strong>${data.fare} Rs</strong></div>
-                  <button id="btn-accept" onclick="acceptIncomingRide()" style="background:#28a745; color:white; border:none; padding:10px; width:100%; border-radius:5px; font-weight:bold; cursor:pointer;">Accept Ride Request</button>
+              // Display target area update inside work-box
+              const jobPanel = document.getElementById("job-panel");
+              jobPanel.innerHTML = `
+                  <hr style="border-color:#444;">
+                  <p style="color:#007bff; font-weight:bold; margin:5px 0;">New Ride Request Received!</p>
+                  <div class="data-row"><span>Distance:</span><strong>${data.distance} km</strong></div>
+                  <div class="data-row"><span>Fare Collection:</span><strong>${data.fare} Rs</strong></div>
+                  <button id="btn-accept" onclick="acceptIncomingRide()" style="background:#28a745; color:white; border:none; padding:10px; width:100%; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:10px;">Accept Ride Request</button>
               `;
-              document.getElementById("job-panel").style.display = "block";
+              jobPanel.style.display = "block";
           }
       });
 }
@@ -128,16 +133,15 @@ async function acceptIncomingRide() {
             driverId: currentCaptainId
         });
 
-        // Screen change karke OTP authentication field dikhana
+        // OTP inputs display logic
         document.getElementById("job-panel").innerHTML = `
-            <p style="font-weight:bold; color:#ffc107;">Status: Going to Rider's Pickup Point</p>
-            <div id="otp-section" style="margin-top:10px;">
-                <input type="text" id="otp-input" placeholder="Enter Rider's 6-Digit OTP" style="padding:8px; width:70%; margin-right:5px;">
-                <button onclick="verifyOtpAndStartTrip()" style="padding:8px; background:#007bff; color:white; border:none; border-radius:4px;">Verify OTP</button>
+            <p style="font-weight:bold; color:#ffc107; margin:5px 0;">Status: Heading to Rider Pickup Point</p>
+            <div id="otp-section" style="margin-top:10px; display:flex; gap:5px;">
+                <input type="text" id="otp-input" placeholder="Enter Rider's OTP" style="padding:8px; flex:1;">
+                <button onclick="verifyOtpAndStartTrip()" style="padding:8px; background:#007bff; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Verify</button>
             </div>
         `;
 
-        // Telemetry GPS track routing to client pickup location point
         navigator.geolocation.getCurrentPosition((pos) => {
             if (routingControl) map.removeControl(routingControl);
             routingControl = L.Routing.control({
@@ -150,7 +154,7 @@ async function acceptIncomingRide() {
         });
 
     } catch (e) { 
-        alert("Network drop error: " + e.message); 
+        alert("Network Error: " + e.message); 
     }
 }
 
@@ -164,11 +168,10 @@ async function verifyOtpAndStartTrip() {
         await db.collection("rides").doc(targetRideId).update({ status: "ongoing" });
         
         document.getElementById("job-panel").innerHTML = `
-            <p style="color:green; font-weight:bold;">Trip Active: Navigating to Destination</p>
+            <p style="color:#28a745; font-weight:bold; margin:5px 0;">Trip Active: Navigating to Drop Location</p>
             <button onclick="endCurrentTrip()" class="btn-danger" style="background:#dc3545; color:white; border:none; padding:10px; width:100%; border-radius:5px; font-weight:bold; margin-top:10px; cursor:pointer;">End Ride & Collect ${activeFare} Rs</button>
         `;
 
-        // Clear previous route and setup destination tracker path
         if (routingControl) map.removeControl(routingControl);
         routingControl = L.Routing.control({
             waypoints: [
@@ -178,28 +181,25 @@ async function verifyOtpAndStartTrip() {
             addWaypoints: false
         }).addTo(map);
     } else {
-        alert("Security Alert: Invalid Authentication Token! Sahi OTP dalein.");
+        alert("Security Alert: Invalid Authentication OTP!");
     }
 }
 
-// --- 6. END TRIP & REVENUE DISTRIBUTION ---
+// --- 6. END TRIP ENGINE ---
 async function endCurrentTrip() {
-    const commissionRate = 0.07; // 7% Management platform deduction fee
+    const commissionRate = 0.07;
     const cutAmount = activeFare * commissionRate;
 
-    // Driver account database node se commission subtract karna
     await db.collection("captains").doc(currentCaptainId).update({
         walletBalance: firebase.firestore.FieldValue.increment(-cutAmount)
     });
 
-    // Central cloud panel revenue update karna
     await db.collection("admin_analytics").doc("revenue").set({
         totalCommissionEarned: firebase.firestore.FieldValue.increment(cutAmount)
     }, { merge: true });
 
-    // Ride ko complete flag mark karna
     await db.collection("rides").doc(targetRideId).update({ status: "completed" });
     
-    alert(`Success: Collected ${activeFare} Rs cash from Rider. 7% system allocation fee (${cutAmount.toFixed(2)} Rs) deducted from wallet.`);
+    alert(`Success: Collected ${activeFare} Rs cash. 7% Management platform fee (${cutAmount.toFixed(2)} Rs) deducted.`);
     location.reload();
 }
